@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encuesta: tipo de cambio FIX</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --surface:#ffffff; --ink-1:#1a1d23; --ink-2:#565c68; --ink-3:#8a90a0;
+    --border:#dde0e6; --accent:#2f5fb0; --accent-ink:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink-1);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    line-height:1.5; padding:32px 16px 64px;
+  }
+  .page{ max-width:560px; margin:0 auto; }
+  h1{ font-size:1.3rem; margin:0 0 6px; line-height:1.3; }
+  .subt{ color:var(--ink-2); font-size:14px; margin:0 0 24px; }
+
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:20px; margin-bottom:20px;
+  }
+  label{ display:block; font-size:13px; font-weight:600; color:var(--ink-2); margin-bottom:6px; }
+  input[type="text"], input[type="number"]{
+    width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:6px;
+    font-size:15px; font-family:inherit; color:var(--ink-1); background:var(--bg);
+  }
+  input:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+  .field{ margin-bottom:14px; }
+  .field:last-of-type{ margin-bottom:18px; }
+  .hint{ font-size:12px; color:var(--ink-3); margin-top:4px; }
+
+  button{
+    background:var(--accent); color:var(--accent-ink); border:0; border-radius:6px;
+    padding:11px 18px; font-size:15px; font-weight:600; cursor:pointer; width:100%;
+  }
+  button:hover{ background:#27508f; }
+  button:disabled{ background:var(--ink-3); cursor:not-allowed; }
+
+  .error{ color:#b3261e; font-size:13px; margin-top:8px; display:none; }
+  .error.show{ display:block; }
+
+  .stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px; }
+  .stat{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px; text-align:center; }
+  .stat .v{ font-size:1.5rem; font-weight:700; }
+  .stat .k{ font-size:11px; color:var(--ink-2); text-transform:uppercase; letter-spacing:.04em; margin-top:2px; }
+
+  .hist-title{ font-size:13px; font-weight:600; color:var(--ink-2); margin-bottom:10px; }
+  .hist{ display:flex; flex-direction:column; gap:6px; }
+  .hist-row{ display:grid; grid-template-columns:100px 1fr 28px; align-items:center; gap:10px; font-size:12.5px; }
+  .hist-row .bin-label{ color:var(--ink-2); text-align:right; font-variant-numeric:tabular-nums; }
+  .hist-track{ background:var(--bg); border:1px solid var(--border); border-radius:4px; height:18px; overflow:hidden; }
+  .hist-bar{ background:var(--accent); height:100%; border-radius:3px 0 0 3px; transition:width .25s ease; }
+  .hist-row .count{ font-variant-numeric:tabular-nums; color:var(--ink-1); font-weight:600; }
+
+  footer{ margin-top:28px; font-size:12px; color:var(--ink-3); text-align:center; }
+  .estado{ font-size:12px; color:var(--ink-3); text-align:center; margin:-8px 0 20px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1 id="h1-pregunta"></h1>
+  <p class="subt">Respuesta en pesos mexicanos por dólar. Ejemplo: si creés que serán 19.50 pesos, escribí <strong>19.50</strong>.</p>
+
+  <div class="card">
+    <div class="field">
+      <label for="alias">Alias (opcional)</label>
+      <input type="text" id="alias" placeholder="Anónimo" maxlength="40">
+    </div>
+    <div class="field">
+      <label for="valor">Tu pronóstico (pesos por dólar)</label>
+      <input type="number" id="valor" step="0.01" min="0" max="50" placeholder="19.50">
+    </div>
+    <button id="btn-enviar" type="button">Enviar</button>
+    <p class="error" id="error">Escribí un número válido antes de enviar.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="v" id="stat-n">0</div><div class="k">Respuestas</div></div>
+    <div class="stat"><div class="v" id="stat-mediana">—</div><div class="k">Mediana</div></div>
+    <div class="stat"><div class="v" id="stat-promedio">—</div><div class="k">Promedio</div></div>
+  </div>
+
+  <div class="card">
+    <div class="hist-title">Distribución de respuestas</div>
+    <div class="hist" id="hist"></div>
+  </div>
+
+  <p class="estado" id="estado"></p>
+  <footer>Las respuestas se guardan en Supabase y la vista se actualiza sola cada 5 segundos.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+  // --- Configuración ---
+  const PREGUNTA = "¿A cuántos pesos por dólar cerrará el tipo de cambio FIX el 31 de diciembre de 2026?";
+  const UNIDAD_PREFIJO = "$";
+  const UNIDAD_SUFIJO = "";
+  const DECIMALES = 2;
+  const SUPABASE_URL = "https://ofukkldbvzdacjgacivr.supabase.co";
+  // La llave "publishable" es pública a propósito: está diseñada para viajar
+  // dentro del HTML que le llega al navegador de cualquier visitante. No es
+  // un secreto que haya que esconder — la seguridad real de los datos la dan
+  // las políticas de Row Level Security (RLS) configuradas en Supabase sobre
+  // la tabla "respuestas", no la confidencialidad de esta llave.
+  const SUPABASE_KEY = "sb_publishable_C9bWkXAweA3ZuBeYdfH60Q_Bq0jP6Wm";
+  const INTERVALO_ACTUALIZACION_MS = 5000;
+
+  const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  let respuestas = [];
+
+  document.getElementById("h1-pregunta").textContent = PREGUNTA;
+
+  const fmt1 = n => n.toLocaleString("es-MX", { minimumFractionDigits: DECIMALES, maximumFractionDigits: DECIMALES });
+  const fmtUnidad = n => `${UNIDAD_PREFIJO}${fmt1(n)}${UNIDAD_SUFIJO}`;
+
+  function mediana(valores) {
+    const s = valores.slice().sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  }
+
+  function promedio(valores) {
+    return valores.reduce((a, b) => a + b, 0) / valores.length;
+  }
+
+  function construirBins(valores) {
+    const min = Math.min(...valores), max = Math.max(...valores);
+    const ANCHO = 0.5;
+    const inicio = Math.floor(min / ANCHO) * ANCHO;
+    const fin = Math.ceil(max / ANCHO) * ANCHO;
+    const bins = [];
+    for (let b = inicio; b < fin; b += ANCHO) {
+      bins.push({ desde: b, hasta: b + ANCHO, count: 0 });
+    }
+    if (bins.length === 0) bins.push({ desde: inicio, hasta: inicio + ANCHO, count: 0 });
+    for (const v of valores) {
+      let bin = bins.find(b => v >= b.desde && v < b.hasta);
+      if (!bin) bin = bins[bins.length - 1]; // el valor máximo exacto cae en el último bin
+      bin.count++;
+    }
+    return bins;
+  }
+
+  function render() {
+    const valores = respuestas.map(r => r.valor);
+
+    document.getElementById("stat-n").textContent = valores.length;
+    document.getElementById("stat-mediana").textContent = valores.length ? fmtUnidad(mediana(valores)) : "—";
+    document.getElementById("stat-promedio").textContent = valores.length ? fmtUnidad(promedio(valores)) : "—";
+
+    const histEl = document.getElementById("hist");
+    histEl.innerHTML = "";
+    if (valores.length === 0) return;
+
+    const bins = construirBins(valores);
+    const maxCount = Math.max(...bins.map(b => b.count));
+
+    for (const bin of bins) {
+      const row = document.createElement("div");
+      row.className = "hist-row";
+
+      const label = document.createElement("div");
+      label.className = "bin-label";
+      label.textContent = `${fmtUnidad(bin.desde)}–${fmtUnidad(bin.hasta)}`;
+
+      const track = document.createElement("div");
+      track.className = "hist-track";
+      const bar = document.createElement("div");
+      bar.className = "hist-bar";
+      bar.style.width = maxCount ? `${(bin.count / maxCount) * 100}%` : "0%";
+      track.appendChild(bar);
+
+      const count = document.createElement("div");
+      count.className = "count";
+      count.textContent = bin.count;
+
+      row.appendChild(label);
+      row.appendChild(track);
+      row.appendChild(count);
+      histEl.appendChild(row);
+    }
+  }
+
+  async function cargarRespuestas() {
+    const estadoEl = document.getElementById("estado");
+    const { data, error } = await db
+      .from("respuestas")
+      .select("alias, valor")
+      .eq("pregunta", PREGUNTA);
+
+    if (error) {
+      console.error("Error cargando respuestas:", error);
+      estadoEl.textContent = "No se pudieron cargar las respuestas. Reintentando...";
+      return;
+    }
+    estadoEl.textContent = "";
+    respuestas = data;
+    render();
+  }
+
+  async function enviar() {
+    const aliasInput = document.getElementById("alias");
+    const valorInput = document.getElementById("valor");
+    const errorEl = document.getElementById("error");
+    const btn = document.getElementById("btn-enviar");
+
+    const valorTexto = valorInput.value.trim();
+    const valor = parseFloat(valorTexto);
+
+    if (valorTexto === "" || Number.isNaN(valor)) {
+      errorEl.textContent = "Escribí un número válido antes de enviar.";
+      errorEl.classList.add("show");
+      valorInput.focus();
+      return;
+    }
+    errorEl.classList.remove("show");
+
+    const alias = aliasInput.value.trim() || "Anónimo";
+
+    btn.disabled = true;
+    const { error } = await db.from("respuestas").insert({ pregunta: PREGUNTA, alias, valor });
+    btn.disabled = false;
+
+    if (error) {
+      console.error("Error enviando respuesta:", error);
+      errorEl.textContent = "No se pudo enviar tu respuesta. Intentá de nuevo.";
+      errorEl.classList.add("show");
+      return;
+    }
+
+    aliasInput.value = "";
+    valorInput.value = "";
+    await cargarRespuestas();
+    valorInput.focus();
+  }
+
+  document.getElementById("btn-enviar").addEventListener("click", enviar);
+  document.getElementById("valor").addEventListener("keydown", e => {
+    if (e.key === "Enter") enviar();
+  });
+
+  render();
+  cargarRespuestas();
+  setInterval(cargarRespuestas, INTERVALO_ACTUALIZACION_MS);
+</script>
+</body>
+</html>
