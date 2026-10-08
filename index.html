@@ -63,7 +63,7 @@
 <body>
 <div class="page">
   <h1 id="h1-pregunta"></h1>
-  <p class="subt">Respuesta en pesos mexicanos por dólar. Ejemplo: si creés que serán 19.50 pesos, escribí <strong>19.50</strong>.</p>
+  <p class="subt">Respuesta en puntos porcentuales de diferencia. Ejemplo: si creés que la diferencia será de 5.4 puntos, escribí <strong>5.4</strong>.</p>
 
   <div class="card">
     <div class="field">
@@ -71,8 +71,8 @@
       <input type="text" id="alias" placeholder="Anónimo" maxlength="40">
     </div>
     <div class="field">
-      <label for="valor">Tu pronóstico (pesos por dólar)</label>
-      <input type="number" id="valor" step="0.01" min="0" max="50" placeholder="19.50">
+      <label for="valor">Tu pronóstico (diferencia en puntos porcentuales)</label>
+      <input type="number" id="valor" step="0.1" min="0" max="20" placeholder="5.0">
     </div>
     <button id="btn-enviar" type="button">Enviar</button>
     <p class="error" id="error">Escribí un número válido antes de enviar.</p>
@@ -96,10 +96,10 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
   // --- Configuración ---
-  const PREGUNTA = "¿A cuántos pesos por dólar cerrará el tipo de cambio FIX el 31 de diciembre de 2026?";
-  const UNIDAD_PREFIJO = "$";
-  const UNIDAD_SUFIJO = "";
-  const DECIMALES = 2;
+  const PREGUNTA = "¿Cuál será la diferencia de votos entre Lula y su contrincante en la segunda vuelta?";
+  const UNIDAD_PREFIJO = "";
+  const UNIDAD_SUFIJO = " pts";
+  const DECIMALES = 1;
   const SUPABASE_URL = "https://ofukkldbvzdacjgacivr.supabase.co";
   // La llave "publishable" es pública a propósito: está diseñada para viajar
   // dentro del HTML que le llega al navegador de cualquier visitante. No es
